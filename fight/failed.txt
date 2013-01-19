@@ -1,0 +1,71 @@
+﻿  let hitp, planp = if (self.Equipped = Nothing && curMap <> Map.empty) || (float self.Health/float self.MaxHealth) <= 0.3 then
+                         0.2, 0.8
+                    else 0.8, 0.2  //(match p1.Equipped with | Arrow(_) -> 3 | _ -> 1) * ((p1.Dexterity * 0.01 * ((5. + (float p1.Strength))/2.)) |> int)  
+  let p = random.NextDouble()
+  if p < hitp then
+      [AttackMode],  (match self.Equipped with | Arrow(_) -> 3 | EnchantedSword(_) -> 2 |  _ -> 1) * ((self.Dexterity * 0.01 * ((5. + (float self.Strength))/2.)) |> int)  
+  else
+      s.Restart()
+      let paths = buildOptions []
+      s.Stop()
+      let gj  = paths |> List.map (fun path -> let spos = player1.Position in
+                                                     path |> List.fold (fun ((plist,sm), mnext, ppos) act -> 
+                                                                              let npos = pseudoMove ppos act
+                                                                              let r = reward npos curMap self enemy act //if the reward is 5000 then change next Action
+                                                                              let rf, af, nnext =  if r >= 5000 then 10, act, Some(r - 5000,PickUp) else r, act, None
+                                                                              let act', r' = match mnext with Some(nr, nact) -> nact, nr | None -> af, rf
+                                                                              ((act'::plist),sm + r'),nnext, npos ) (([], 0), None, spos) |> fst3) 
+      let npath, score = gj |> List.maxBy snd 
+      if score > oldScore || oldpath = [] then npath, score else oldpath, oldScore
+/////////////////////////////////////////////
+
+let compareWeapons hr (enemy:Hero) = function
+  | (pwep, Weapon(w)) -> 
+    match (pwep, w) with
+      | (w1,w2) when w1 = w2 -> 0
+      | (EnchantedSword(el), EnchantedSword(el2)) when el = enemy.WeakTo -> 0
+      | (EnchantedSword(_), EnchantedSword(el)) when el = enemy.WeakTo -> 100
+      | Arrow(_) , Arrow(_) 
+      | Arrow(_) , Sword
+      | Sword, Sword
+      | EnchantedSword(_), EnchantedSword(_) -> 0
+      | (_, EnchantedSword(_)) -> 70
+      | (Arrow(el), Arrow(el2)) when el2 = enemy.WeakTo -> 50
+      | _, Arrow(_) -> 30
+      | _ , Sword -> 20
+      | _ -> 0
+  | _ -> int(round(hr))
+
+  ///////////////////
+
+  let reward (x,y) (curMap:Map<int * int, Item>) (p1:Hero) (p2:Hero) = function
+  | Move(i) -> let nx,ny = match i with 
+                                  | 0 -> (x - 1) |> wrap 10, y
+                                  | 1 -> (x + 1) % 10, y 
+                                  | 2 -> x, (y - 1)  |> wrap 10
+                                  | _ -> x, (y + 1) % 10 
+  
+               if curMap.ContainsKey(nx,ny) then
+                 5000 * compareWeapons (float p1.Health/float p1.MaxHealth) p2 ((p1.Equipped), curMap.[nx,ny])
+               elif (float p1.MaxHealth/float p1.Health) < 0.3  then 10 else  0
+  | PickUp -> if curMap.ContainsKey((x,y)) then
+                match curMap.[(x,y)] with
+                  | Weapon(EnchantedSword(elem)) 
+                  | Weapon(Arrow(elem)) -> if elem = p2.WeakTo then 1100 else 800
+                  | Weapon(_) -> 700
+                  | Potion p -> -10 + ((p * (float p1.MaxHealth / float p1.Health)) |> round |> int)
+              else 0       
+  | _ -> 0
+  //////////////
+
+  let reward (x,y) (curMap:Map<int * int, Item>) (p1:Hero) (p2:Hero) = function
+  | Move(i) -> if (float p1.Health/float p1.MaxHealth) < 0.3  then 10 else  0
+  | PickUp -> 
+           if curMap.ContainsKey((x,y)) then
+                match curMap.[(x,y)] with
+                  | Weapon(EnchantedSword(elem)) 
+                  | Weapon(Arrow(elem)) -> if elem = p2.WeakTo then 1100 else 800
+                  | Weapon(_) -> 700
+                  | Potion p -> -2 + ((p * (float p1.MaxHealth / float p1.Health)) |> round |> int)
+              else -100       
+  | _ -> 0
